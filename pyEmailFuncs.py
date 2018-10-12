@@ -115,7 +115,7 @@ def handle_clean_att(file_type, att_name_clean, att_name):
     print("--Filename: %s" % (att_name_clean))
 
 def handle_xml(file, name):   
-    path_name= "data/processed/" + name
+    path_name= "data/processed/" + name + ".xml"
     tree = ET.ElementTree(ET.fromstring(file))  
     #print(tree)
     tree.write(path_name)
