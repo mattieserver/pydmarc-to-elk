@@ -273,3 +273,4 @@ data/zip/*
 !data/zip/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+log.txt
