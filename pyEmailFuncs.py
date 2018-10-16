@@ -264,7 +264,7 @@ def handle_xml(file, name):
 				###record - row - count
 				count = row.find("count")
 				if count is not None:
-					output_row["count"] = count.text
+					output_row["count"] = int(count.text)
 				else:
 					output_row["count"] = ""
 
