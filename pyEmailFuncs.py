@@ -1,16 +1,23 @@
 #!/usr/bin/env python
 
 from configparser import ConfigParser
+from elasticsearch import Elasticsearch
 import sys
 import imaplib
 import email
 import email.header
-import datetime
+from datetime import datetime
 import gzip
 import base64
 import zipfile
 import json
+import re
 import xml.etree.ElementTree as ET
+
+pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
+def parse_uid(data):
+    match = pattern_uid.match(data)
+    return match.group('uid')
 
 CONFIG = ConfigParser()
 CONFIG.read('Settings/config.ini')
@@ -19,6 +26,7 @@ EMAIL_ACCOUNT = CONFIG.get('email', 'user')
 EMAIL_FOLDER = CONFIG.get('email', 'reports_folder')
 EMAIL_SERVER = CONFIG.get('email', 'host')
 EMAIL_PASSWORD = CONFIG.get('email', 'password')
+es=Elasticsearch([{'host':'10.10.25.165','port':9200}])
 
 def process_mailbox(M):
 	rv, data = M.search(None, "ALL")
@@ -35,7 +43,9 @@ def process_mailbox(M):
 		rv, data = M.fetch(num, '(RFC822)')
 		if rv != 'OK':
 			print("ERROR getting message %i" % (num))
-			return
+			return	
+
+		#print(data[1][0])
 
 		msg = email.message_from_bytes(data[0][1])
 		hdr = email.header.make_header(email.header.decode_header(msg['Subject']))
@@ -88,7 +98,7 @@ def handle_att(file_type, att):
 				if file_type == "UNKNOWN":
 					file_type_array = att_name_clean.split(".")
 					file_type_index = (len(file_type_array)) -1
-					file_extension = file_type_array[file_type_index]					
+					file_extension = file_type_array[file_type_index]
 					if file_extension == "gz":
 						file_type = "GZIP"
 					elif file_extension == "zip":
@@ -121,8 +131,9 @@ def handle_xml(file, name):
 	path_name= "data/processed/" + name + ".xml"
 	tree = ET.ElementTree(ET.fromstring(file))
 	tree.write(path_name)
-	root = tree.getroot()	
+	root = tree.getroot()
 	output = {}
+	output_rows = []
 	if root.tag == "feedback":
 		#version
 		version = root.find("version")
@@ -133,261 +144,246 @@ def handle_xml(file, name):
 
 		#report_metadata
 		report_metadata = root.find("report_metadata")
-		output_report_metadata = {}
 
 		##report_metadata - org_name
 		org_name = report_metadata.find("org_name")
 		if org_name is not None:
-			output_report_metadata["org_name"] = org_name.text
+			output["report_metadata-org_name"] = org_name.text
 		else:
-			output_report_metadata["org_name"] = ""
+			output["report_metadata-org_name"] = ""
 
 		##report_metadata - email
 		email = report_metadata.find("email")
 		if email is not None:
-			output_report_metadata["email"] = email.text
+			output["report_metadata-email"] = email.text
 		else:
-			output_report_metadata["email"] = ""
+			output["report_metadata-email"] = ""
 
 		##report_metadata - extra_contact_info
 		extra_contact_info = report_metadata.find("extra_contact_info")
 		if extra_contact_info is not None:
-			output_report_metadata["extra_contact_info"] = extra_contact_info.text
+			output["report_metadata-extra_contact_info"] = extra_contact_info.text
 		else:
-			output_report_metadata["extra_contact_info"] = ""
+			output["report_metadata-extra_contact_info"] = ""
 
 		##report_metadata - report_id
 		report_id = report_metadata.find("report_id")
 		if report_id is not None:
-			output_report_metadata["report_id"] = report_id.text
+			output["report_metadata-report_id"] = report_id.text
 		else:
-			output_report_metadata["report_id"] = ""
+			output["report_metadata-report_id"] = ""
 
 		##report_metadata - date_range
 		date_range = report_metadata.find("date_range")
-		output_date_range = {}
 		if date_range is not None:
 			begin = date_range.find("begin")
-			end = date_range.find("end")			
+			end = date_range.find("end")
 
 			###report_metadata - date_range - begin
 			if begin is not None:
-				output_date_range["begin"] = begin.text
-				int_begin = datetime.datetime.fromtimestamp(int(begin.text))			
-				output_report_metadata["human_begin"] = int_begin.isoformat(' ')	
+				output["report_metadata-date_range-begin"] = begin.text
+				int_begin = datetime.fromtimestamp(int(begin.text))
+				output["report_metadata-date_range-human_begin"] = int_begin.isoformat(' ')
 			else:
-				output_date_range["begin"] = ""
-				output_report_metadata["human_begin"] = ""
+				output["report_metadata-date_range-begin"] = ""
+				output["report_metadata-date_range-human_begin"] = ""
 
 			###report_metadata - date_range - end
 			if end is not None:
-				output_date_range["end"] = end.text
-				int_end = datetime.datetime.fromtimestamp(int(end.text))
-				output_report_metadata["human_end"] = int_end.isoformat(' ')	
+				output["report_metadata-date_range-end"] = end.text
+				int_end = datetime.fromtimestamp(int(end.text))
+				output["report_metadata-date_range-human_end"] = int_end.isoformat(' ')
 			else:
-				output_date_range["end"] = ""
-				output_report_metadata["human_end"] = ""
+				output["report_metadata-date_range-end"] = ""
+				output["report_metadata-date_range-human_end"] = ""
 		else:
-			output_date_range["end"] = ""
-			output_date_range["begin"] = ""
-			output_report_metadata["human_end"] = ""
-			output_report_metadata["human_begin"] = ""
-		output_report_metadata["date_range"] = output_date_range
-		
-		output["report_metadata"] = output_report_metadata
+			output["report_metadata-date_range-end"] = ""
+			output["report_metadata-date_range-begin"] = ""
+			output["report_metadata-date_range-human_end"] = ""
+			output["report_metadata-date_range-human_begin"] = ""
 
 		#policy_published
 		policy_published = root.find("policy_published")
-		output_policy_published = {}
 
 		##policy_published - domain
 		domain = policy_published.find("domain")
 		if domain is not None:
-			output_policy_published["domain"] = domain.text
+			output["policy_published-domain"] = domain.text
 		else:
-			output_policy_published["domain"] = ""
+			output["policy_published-domain"] = ""
 
 		##policy_published - adkim
 		adkim = policy_published.find("adkim")
 		if adkim is not None:
-			output_policy_published["adkim"] = adkim.text
+			output["policy_published-adkim"] = adkim.text
 		else:
-			output_policy_published["adkim"] = ""
+			output["policy_published-adkim"] = ""
 
 		##policy_published - aspf
 		aspf = policy_published.find("aspf")
 		if aspf is not None:
-			output_policy_published["aspf"] = aspf.text
+			output["policy_published-aspf"] = aspf.text
 		else:
-			output_policy_published["aspf"] = ""
+			output["policy_published-aspf"] = ""
 
 		##policy_published - p
 		p = policy_published.find("p")
 		if p is not None:
-			output_policy_published["p"] = p.text
+			output["policy_published-p"] = p.text
 		else:
-			output_policy_published["p"] = ""
+			output["policy_published-p"] = ""
 
 		##policy_published - sp
 		sp = policy_published.find("sp")
 		if sp is not None:
-			output_policy_published["sp"] = sp.text
+			output["policy_published-sp"] = sp.text
 		else:
-			output_policy_published["sp"] = ""
+			output["policy_published-sp"] = ""
 
 		##policy_published - pct
 		pct = policy_published.find("pct")
 		if pct is not None:
-			output_policy_published["pct"] = pct.text
+			output["policy_published-pct"] = pct.text
 		else:
-			output_policy_published["pct"] = ""
-
-		output["policy_published"] = output_policy_published
+			output["policy_published-pct"] = ""
 
 		#record
 		records = root.findall("record")
-		output_records = []
 		for record in records:
-			output_record = {}
+			output_temp_record = output
 
 			##record - row
 			row = record.find("row")
-			output_row = {}
 			if row is not None:
 				###record - row - sourceip
 				source_ip = row.find("source_ip")
 				if source_ip is not None:
-					output_row["source_ip"] = source_ip.text
+					output_temp_record["row-source_ip"] = source_ip.text
 				else:
-					output_row["source_ip"] = ""
+					output_temp_record["row-source_ip"] = ""
 
 				###record - row - count
 				count = row.find("count")
 				if count is not None:
-					output_row["count"] = int(count.text)
+					output_temp_record["row-count"] = int(count.text)
 				else:
-					output_row["count"] = ""
+					output_temp_record["row-count"] = ""
 
 				###record - row - policy_evaluated
 				policy_evaluated = row.find("policy_evaluated")
-				output_policy_evaluated = {}
 
 				####record - row - policy_evaluated - disposition
 				disposition = policy_evaluated.find("disposition")
 				if disposition is not None:
-					output_policy_evaluated["disposition"] = disposition.text
+					output_temp_record["row-policy_evaluated-disposition"] = disposition.text
 				else:
-					output_policy_evaluated["disposition"] = ""
+					output_temp_record["row-policy_evaluated-disposition"] = ""
 
 				####record - row - policy_evaluated - dkim
 				dkim = policy_evaluated.find("dkim")
 				if dkim is not None:
-					output_policy_evaluated["dkim"] = dkim.text
+					output_temp_record["row-policy_evaluated-dkim"] = dkim.text
 				else:
-					output_policy_evaluated["dkim"] = ""
+					output_temp_record["row-policy_evaluated-dkim"] = ""
 
 				####record - row - policy_evaluated - spf
 				spf = policy_evaluated.find("spf")
 				if spf is not None:
-					output_policy_evaluated["spf"] = spf.text
+					output_temp_record["row-policy_evaluated-spf"] = spf.text
 				else:
-					output_policy_evaluated["spf"] = ""
-
-				output_row["policy_evaluated"] = output_policy_evaluated				
+					output_temp_record["row-policy_evaluated-spf"] = ""
 			else:
-				pass	
-
-			output_record["row"] = output_row
+				output_temp_record["row-source_ip"] = ""
+				output_temp_record["row-count"] = ""
+				output_temp_record["row-policy_evaluated-disposition"] = ""
+				output_temp_record["row-policy_evaluated-dkim"] = ""
+				output_temp_record["row-policy_evaluated-spf"] = ""
 
 			##record - identifiers
 			identifiers = record.find("identifiers")
-			output_identifiers = {}
 
 			###record - identifiers - header_from
 			header_from = identifiers.find("header_from")
 			if header_from is not None:
-				output_identifiers["header_from"] = header_from.text
+				output_temp_record["identifiers-header_from"] = header_from.text
 			else:
-				output_identifiers["header_from"] = ""			
+				output_temp_record["identifiers-header_from"] = ""
 
 			###record - identifiers - envelope_from
 			envelope_from = identifiers.find("envelope_from")
 			if envelope_from is not None:
-				output_identifiers["envelope_from"] = envelope_from.text
+				output_temp_record["identifiers-envelope_from"] = envelope_from.text
 			else:
-				output_identifiers["envelope_from"] = ""
-
-			output_record["identifiers"] = output_identifiers
+				output_temp_record["identifiers-envelope_from"] = ""
 
 			##record - auth_results
 			auth_results = record.find("auth_results")
-			output_auth_results = {}
 
 			###record - auth_results - spf
 			spf = auth_results.find("spf")
-			output_spf = {}
+
 			if spf is not None:
 				###record - auth_results - spf - domain
 				spf_domain = spf.find("domain")
 				if spf_domain is not None:
-					output_spf["domain"] = spf_domain.text
+					output_temp_record["auth_results-spf-domain"] = spf_domain.text
 				else:
-					output_spf["domain"] = ""
+					output_temp_record["auth_results-spf-domain"] = ""
 
 				###record - auth_results - spf - result
 				spf_result = spf.find("result")
 				if spf_domain is not None:
-					output_spf["result"] = spf_result.text
+					output_temp_record["auth_results-spf-result"] = spf_result.text
 				else:
-					output_spf["result"] = ""
+					output_temp_record["auth_results-spf-result"] = ""
 
 				###record - auth_results - spf - scope
 				spf_scope = spf.find("scope")
 				if spf_scope is not None:
-					output_spf["scope"] = spf_scope.text
+					output_temp_record["auth_results-spf-scope"] = spf_scope.text
 				else:
-					output_spf["scope"] = ""
+					output_temp_record["auth_results-spf-scope"] = ""
 			else:
-				pass
-			output_auth_results["spf"] = output_spf
+				output_temp_record["auth_results-spf-domain"] = ""
+				output_temp_record["auth_results-spf-result"] = ""
+				output_temp_record["auth_results-spf-scope"] = ""
 
 			###record - auth_results - dkim
 			dkim = auth_results.find("dkim")
-			output_dkim = {}
+
 			if dkim is not None:
 				###record - auth_results - dkim - domain
 				dkim_domain = dkim.find("domain")
 				if dkim_domain is not None:
-					output_dkim["domain"] = dkim_domain.text
+					output_temp_record["auth_results-dkim-domain"] = dkim_domain.text
 				else:
-					output_dkim["domain"] = ""
+					output_temp_record["auth_results-dkim-domain"] = ""
 
 				###record - auth_results - dkim - result
 				dkim_result = dkim.find("result")
 				if dkim_result is not None:
-					output_dkim["result"] = dkim_result.text
+					output_temp_record["auth_results-dkim-result"] = dkim_result.text
 				else:
-					output_dkim["result"] = ""
+					output_temp_record["auth_results-dkim-result"] = ""
 
 				###record - auth_results - dkim - selector
 				dkim_selector = dkim.find("selector")
 				if dkim_selector is not None:
-					output_dkim["selector"] = dkim_selector.text
+					output_temp_record["auth_results-dkim-selector"] = dkim_selector.text
 				else:
-					output_dkim["selector"] = ""
+					output_temp_record["auth_results-dkim-selector"] = ""
 			else:
-				pass
-			output_auth_results["dkim"] = output_dkim
-
-			output_record["auth_results"] = output_auth_results
-
-			output_records.append(output_record)
-
-		output["records"] = output_records
+				output_temp_record["auth_results-dkim-domain"] = ""
+				output_temp_record["auth_results-dkim-result"] = ""
+				output_temp_record["auth_results-dkim-selector"] = ""
+			output_temp_record["@timestamp"] = datetime.now().isoformat()
+			output_rows.append(output_temp_record)
 	else:
 		print("Unkown root tag for xml: %s" % (root.tag))
-	json_data = json.dumps(output)
-	print(json_data)
+	#json_data = json.dumps(output)	
+	for row in output_rows:		
+		res = es.index(index='dmarc-index',doc_type='dmarc_report',body=row)
+		#print(row)
 
 M = imaplib.IMAP4_SSL(EMAIL_SERVER)
 
