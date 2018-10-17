@@ -11,13 +11,7 @@ import gzip
 import base64
 import zipfile
 import json
-import re
 import xml.etree.ElementTree as ET
-
-pattern_uid = re.compile('\d+ \(UID (?P<uid>\d+)\)')
-def parse_uid(data):
-    match = pattern_uid.match(data)
-    return match.group('uid')
 
 CONFIG = ConfigParser()
 CONFIG.read('Settings/config.ini')
@@ -26,7 +20,9 @@ EMAIL_ACCOUNT = CONFIG.get('email', 'user')
 EMAIL_FOLDER = CONFIG.get('email', 'reports_folder')
 EMAIL_SERVER = CONFIG.get('email', 'host')
 EMAIL_PASSWORD = CONFIG.get('email', 'password')
-es=Elasticsearch([{'host':'10.10.25.165','port':9200}])
+ELK_HOST = CONFIG.get('elk', 'host')
+ELK_PORT = CONFIG.get('elk', 'port')
+es=Elasticsearch([{'host': ELK_HOST ,'port': ELK_PORT}])
 
 def process_mailbox(M):
 	rv, data = M.search(None, "ALL")
@@ -383,7 +379,8 @@ def handle_xml(file, name):
 	#json_data = json.dumps(output)	
 	for row in output_rows:		
 		res = es.index(index='dmarc-index',doc_type='dmarc_report',body=row)
-		#print(row)
+		json_data = json.dumps(row)	
+		#print(json_data)
 
 M = imaplib.IMAP4_SSL(EMAIL_SERVER)
 
