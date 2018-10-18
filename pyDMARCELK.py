@@ -16,6 +16,7 @@ CONFIG.read('Settings/config.ini')
 
 EMAIL_ACCOUNT = CONFIG.get('email', 'user')
 EMAIL_FOLDER = CONFIG.get('email', 'reports_folder')
+PROCESSED_FOLDER = CONFIG.get('email', 'processed_folder')
 EMAIL_SERVER = CONFIG.get('email', 'host')
 EMAIL_PASSWORD = CONFIG.get('email', 'password')
 ELK_HOST = CONFIG.get('elk', 'host')
@@ -24,7 +25,7 @@ es=Elasticsearch([{'host': ELK_HOST ,'port': ELK_PORT}])
 
 class DMARCELK():
     __M = None
-    __PROCSSED = []
+    __PROCESSED = []
     __messages_data = None
     __messages_data_start = None
     __data = None
@@ -93,7 +94,7 @@ class DMARCELK():
         return len(new_messages_data)
     
     def __process_mailbox(self, data, messages_data):       
-        for num in messages_data[:]:            
+        for num in messages_data[:]: 
             rv, data = self.__M.fetch(num, '(RFC822)')
             if rv != 'OK':
                 return	
@@ -106,17 +107,12 @@ class DMARCELK():
             uid_var = uid_var[1].replace(")","")
             uid_var = uid_var.replace(" ","")	
 
-            if uid_var in self.__PROCSSED:                           
+            if uid_var in self.__PROCESSED:                           
                 continue
-
-            lent = len(self.__PROCSSED) + 1
-            if lent == len(messages_data):
-                print("All done mailbox report")
-                return
 
             msg = email.message_from_bytes(data[0][1])
             hdr = email.header.make_header(email.header.decode_header(msg['Subject']))		
-            #print("Working on email with uid %s and subject %s" % (uid_var,hdr))
+            print("Working on email with uid %s and subject %s" % (uid_var,hdr))
 
             root_content = msg.get_content_type()
             if root_content == "multipart/mixed":
@@ -144,7 +140,7 @@ class DMARCELK():
                 pass                            	
             else:
                 print("Could not copy mail")	
-            self.__PROCSSED.append(uid_var)
+            self.__PROCESSED.append(uid_var)
             print("Done with email uid %s \n" % (uid_var))
             messages_data.remove(num)
 
@@ -152,22 +148,8 @@ class DMARCELK():
         att_name = att.get("Content-Description")
         if att_name is not None:
             att_name = att_name.strip()
-            att_name = att_name.replace(" ","")
-            att_name_clean = att_name
-            if file_type == "UNKNOWN":
-                file_type_array = att_name_clean.split(".")
-                file_type_index = (len(file_type_array)) -1
-                file_extension = file_type_array[file_type_index]
-                if file_extension == "gz":
-                    file_type = "GZIP"
-                elif file_extension == "zip":
-                    file_type = "ZIP"
-                else:
-                    print("Unkown file type %s" % (file_type_array[file_type_index]))
-            if file_type != "UNKNOWN":	
-                att_name = "data/" + file_type + "/" + att_name
-                open(att_name,'wb').write(att.get_payload(decode=True))
-                self.__handle_clean_att(file_type, att_name_clean, att_name)
+            att_name = att_name.replace(" ","")                      
+            self.__handle_clean_att(file_type, att_name, att)
         else:
             att_dip = att.get("Content-Disposition")
             att_dip = att_dip.split(';')
@@ -178,24 +160,28 @@ class DMARCELK():
                 x = x.replace(" ","")
                 if x.startswith("filename"):
                     att_name = x.replace('"', '')
-                    att_name = att_name.replace("filename=","")
-                    att_name_clean = att_name
-                    if file_type == "UNKNOWN":
-                        file_type_array = att_name_clean.split(".")
-                        file_type_index = (len(file_type_array)) -1
-                        file_extension = file_type_array[file_type_index]
-                        if file_extension == "gz":
-                            file_type = "GZIP"
-                        elif file_extension == "zip":
-                            file_type = "ZIP"
-                        else:
-                            print("Unkown file type %s" % (file_type_array[file_type_index]))
-                    if file_type != "UNKNOWN":
-                        att_name = "data/" + file_type + "/" + att_name
-                        open(att_name,'wb').write(att.get_payload(decode=True))
-                        self.__handle_clean_att(file_type, att_name_clean, att_name)
+                    att_name = att_name.replace("filename=","")                                        
+                    self.__handle_clean_att(file_type, att_name, att)
 
-    def __handle_clean_att(self, file_type, att_name_clean, att_name):
+    def __handle_clean_att(self, file_type, att_name_clean, att):
+        att_name = att_name_clean
+        if file_type != "UNKNOWN":
+            pass            
+        else:
+            file_type_array = att_name.split(".")
+            file_type_index = (len(file_type_array)) -1
+            file_extension = file_type_array[file_type_index]
+            if file_extension == "gz":
+                file_type = "GZIP"
+            elif file_extension == "zip":
+                file_type = "ZIP"
+            else:
+                print("Unkown file type %s" % (file_type_array[file_type_index]))
+                return
+
+        att_name = "data/" + file_type + "/" + att_name
+        open(att_name,'wb').write(att.get_payload(decode=True))
+
         if file_type == "GZIP":
             f = gzip.open(att_name, 'rb')
             file_content = f.read()
