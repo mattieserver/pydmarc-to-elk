@@ -34,48 +34,50 @@ class DMARCELK():
         self.__setup_con()
         rv, self.__data = self.__M.search(None, "ALL")
         if rv != 'OK':
-            print("No messages found!")		
+            print("No messages found!")
 
         self.__messages_data = self.__data[0].split()
         self.__messages_data_start = self.__messages_data
 
         messages_data_count = len(self.__messages_data)
-        print("Processing %i messages \n" % (messages_data_count))    
+        print("Processing %i messages \n" % (messages_data_count))
 
     def __setup_con(self):
-        self.__M = imaplib.IMAP4_SSL(EMAIL_SERVER)    
-        self.__M.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)      
+        self.__M = imaplib.IMAP4_SSL(EMAIL_SERVER)
+        self.__M.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
         self.__M.select(EMAIL_FOLDER, readonly = False)
 
-    def start_run(self):        
-        try:	       
+    def start_run(self):
+        try:
             self.__run()
             print("Done mailbox")
             self.__start_cleanup()
         except Exception as e:
-            print(e)          
-            self.__M.logout()  
-            self.start_run()             
+            print(e)
+            self.__M.logout()
+            self.start_run()
 
     def __start_cleanup(self):
         try:
             self.__cleanup()
-            print("Done Mailbox Cleanup")            
+            print("Done Mailbox Cleanup")
         except Exception as e:
-            print(e)          
-            self.__M.logout()  
-            self.__start_cleanup()    
-    
+            print(e)
+            self.__M.logout()
+            self.__start_cleanup()
+
     def __cleanup(self):
         self.__setup_con()
         rv, new_data = self.__M.search(None, "ALL")
         if rv != 'OK':
-            print("No messages found!")		
+            print("No messages found!")
         new_messages_data = new_data[0].split()
         for num in new_messages_data:
-            #check for new messages
-            self.__M.store(num, '+FLAGS', '\\Deleted')
-            self.__M.expunge()
+            uid = self.__getUID(self.__M,num)
+            if uid in self.__PROCESSED:
+                print("Message should be deteled")
+                self.__M.store(num, '+FLAGS', '\\Deleted')
+                self.__M.expunge()
         print("Messages cleaned up")
         items_left = self.__check_cleanup()
         if items_left != 0:
@@ -84,34 +86,46 @@ class DMARCELK():
             print('Cleanup Check OK')
 
     def __check_cleanup(self):
-        self.__M.logout() 
+        self.__M.logout()
         self.__setup_con()
         rv, new_data = self.__M.search(None, "ALL")
         if rv != 'OK':
-            print("No messages found!")		
+            print("No messages found!")
         new_messages_data = new_data[0].split()
-        #check for new messages
-        return len(new_messages_data)
-    
-    def __process_mailbox(self, data, messages_data):       
-        for num in messages_data[:]: 
+        new_messages_data_len = len(new_messages_data)
+        count = 0
+        if new_messages_data_len == 0:
+            return 0
+        else:
+            for num in new_messages_data:
+                uid = self.__getUID(self.__M,num)
+                if uid in self.__PROCESSED:                    
+                    count += 1                            
+            return count
+
+    def __getUID(self,M, num):
+        resp, uid_data = M.fetch(num, "(UID)")
+        if resp != 'OK':
+            return
+        uid_var = uid_data[0].decode()
+        uid_var = uid_var.split("UID")
+        uid_var = uid_var[1].replace(")","")
+        uid_var = uid_var.replace(" ","")
+        return uid_var
+
+    def __process_mailbox(self, data, messages_data):
+        for num in messages_data[:]:
             rv, data = self.__M.fetch(num, '(RFC822)')
             if rv != 'OK':
-                return	
+                return
 
-            resp, uid_data = self.__M.fetch(num, "(UID)")		
-            if resp != 'OK':           
-                return	
-            uid_var = uid_data[0].decode()
-            uid_var = uid_var.split("UID")
-            uid_var = uid_var[1].replace(")","")
-            uid_var = uid_var.replace(" ","")	
+            uid_var = self.__getUID(self.__M, num)
 
-            if uid_var in self.__PROCESSED:                           
+            if uid_var in self.__PROCESSED:
                 continue
 
             msg = email.message_from_bytes(data[0][1])
-            hdr = email.header.make_header(email.header.decode_header(msg['Subject']))		
+            hdr = email.header.make_header(email.header.decode_header(msg['Subject']))
             print("Working on email with uid %s and subject %s" % (uid_var,hdr))
 
             root_content = msg.get_content_type()
@@ -135,11 +149,11 @@ class DMARCELK():
             else:
                 print("unkown root: %s" % (cnt_type))
 
-            result_uid = self.__M.uid('COPY', uid_var, "INBOX/Processed")		
-            if result_uid[0] == "OK":			
-                pass                            	
+            result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)
+            if result_uid[0] == "OK":
+                pass
             else:
-                print("Could not copy mail")	
+                print("Could not copy mail")
             self.__PROCESSED.append(uid_var)
             print("Done with email uid %s \n" % (uid_var))
             messages_data.remove(num)
@@ -148,7 +162,7 @@ class DMARCELK():
         att_name = att.get("Content-Description")
         if att_name is not None:
             att_name = att_name.strip()
-            att_name = att_name.replace(" ","")                      
+            att_name = att_name.replace(" ","")
             self.__handle_clean_att(file_type, att_name, att)
         else:
             att_dip = att.get("Content-Disposition")
@@ -160,13 +174,13 @@ class DMARCELK():
                 x = x.replace(" ","")
                 if x.startswith("filename"):
                     att_name = x.replace('"', '')
-                    att_name = att_name.replace("filename=","")                                        
+                    att_name = att_name.replace("filename=","")
                     self.__handle_clean_att(file_type, att_name, att)
 
     def __handle_clean_att(self, file_type, att_name_clean, att):
         att_name = att_name_clean
         if file_type != "UNKNOWN":
-            pass            
+            pass
         else:
             file_type_array = att_name.split(".")
             file_type_index = (len(file_type_array)) -1
@@ -185,23 +199,24 @@ class DMARCELK():
         if file_type == "GZIP":
             f = gzip.open(att_name, 'rb')
             file_content = f.read()
-            self.__handle_xml(file_content, att_name_clean)
+            self.__handle_xml(file_content, att_name_clean, True)
             f.close()
         elif file_type == "ZIP":
             archive = zipfile.ZipFile(att_name, 'r')
             for a_file in archive.infolist():
                 if a_file.filename.endswith(".xml"):
                     xml = archive.read(a_file.filename)
-                    self.__handle_xml(xml, att_name_clean)
+                    self.__handle_xml(xml, att_name_clean, True)
                 else:
                     print("File in ZIP is not a XML")
         else:
             print("File Type not supported %s" % (file_type))
 
-    def __handle_xml(self, file, name):
-        path_name= "data/processed/" + name + ".xml"
+    def __handle_xml(self, file, name, new):
         tree = ET.ElementTree(ET.fromstring(file))
-        tree.write(path_name)
+        if new:
+            path_name= "data/processed/" + name + ".xml"        
+            tree.write(path_name)
         root = tree.getroot()
         output = {}
         output_rows = []
@@ -449,18 +464,21 @@ class DMARCELK():
                     output_temp_record["auth_results-dkim-selector"] = ""
 
                 if int_begin is not None:
-                    output_temp_record["@timestamp"] = int_begin.isoformat()				
+                    output_temp_record["@timestamp"] = int_begin.isoformat()
                 else:
-                    output_temp_record["@timestamp"] = datetime.utcnow().isoformat()			
+                    output_temp_record["@timestamp"] = datetime.utcnow().isoformat()
                 output_rows.append(output_temp_record)
         else:
-            print("Unkown root tag for xml: %s" % (root.tag))	
-        for row in output_rows:		
-            #res = es.index(index='dmarc-index',doc_type='dmarc_report',body=row)
-            #json_data = json.dumps(row)	
+            print("Unkown root tag for xml: %s" % (root.tag))
+        for row in output_rows:
+            res = es.index(index='dmarc-index',doc_type='dmarc_report',body=row)
+            #json_data = json.dumps(row)
             #print(json_data)
             pass
 
-    def __run(self):      
-        self.__setup_con()     
-        self.__process_mailbox(self.__data, self.__messages_data)       
+    def __run(self):
+        self.__setup_con()
+        self.__process_mailbox(self.__data, self.__messages_data)
+
+    def reload_processed_folder(self):
+        pass

@@ -10,7 +10,7 @@ CONFIG.set('email', 'reports_folder', 'Inbox')
 CONFIG.set('email', 'processed_folder', 'Processed')
 CONFIG.add_section('elk')
 CONFIG.set('elk', 'host', '192.168.0.1')
-CONFIG.set('elk', 'port', '6379')
+CONFIG.set('elk', 'port', '9200')
 
 with open('Settings/config.ini', 'w') as f:
     CONFIG.write(f)
