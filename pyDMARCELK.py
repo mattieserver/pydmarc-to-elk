@@ -151,7 +151,7 @@ class DMARCELK():
             else:
                 print("unkown root: %s" % (cnt_type))
 
-            result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)
+            result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)            
             if result_uid[0] == "OK":
                 pass
             else:
