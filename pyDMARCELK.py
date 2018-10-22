@@ -9,6 +9,7 @@ import gzip
 import base64
 import zipfile
 import json
+import os
 import xml.etree.ElementTree as ET
 
 CONFIG = ConfigParser()
@@ -21,6 +22,7 @@ EMAIL_SERVER = CONFIG.get('email', 'host')
 EMAIL_PASSWORD = CONFIG.get('email', 'password')
 ELK_HOST = CONFIG.get('elk', 'host')
 ELK_PORT = CONFIG.get('elk', 'port')
+ELK_MODE = CONFIG.get('elk', 'mode')
 es=Elasticsearch([{'host': ELK_HOST ,'port': ELK_PORT}])
 
 class DMARCELK():
@@ -471,14 +473,24 @@ class DMARCELK():
         else:
             print("Unkown root tag for xml: %s" % (root.tag))
         for row in output_rows:
-            res = es.index(index='dmarc-index',doc_type='dmarc_report',body=row)
-            #json_data = json.dumps(row)
-            #print(json_data)
-            pass
+            if ELK_MODE == "read":
+                json_data = json.dumps(row)
+                print(json_data)                
+            elif ELK_MODE == "write":
+                es.index(index='dmarc-index',doc_type='dmarc_report',body=row)            
+            else:
+                print("ELK_MODE is not valid is: %s" % (ELK_MODE))
 
     def __run(self):
         self.__setup_con()
         self.__process_mailbox(self.__data, self.__messages_data)
 
     def reload_processed_folder(self):
-        pass
+        path = "data/processed/"
+        files = os.listdir(path)
+        for file_name in files:
+            if file_name.endswith(".xml"):
+                file_path = "data/processed/" + file_name
+                file_object = open(file_path,"r").read()
+                self.__handle_xml(file_object,file_name,False)
+                

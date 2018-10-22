@@ -11,6 +11,7 @@ CONFIG.set('email', 'processed_folder', 'Processed')
 CONFIG.add_section('elk')
 CONFIG.set('elk', 'host', '192.168.0.1')
 CONFIG.set('elk', 'port', '9200')
+CONFIG.set('elk', 'mode', 'read') #set read or write
 
 with open('Settings/config.ini', 'w') as f:
     CONFIG.write(f)
