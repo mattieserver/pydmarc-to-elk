@@ -335,7 +335,7 @@ class DMARCELK():
             else:
                 output["policy_published-pct"] = ""
 
-            #record
+            #record            
             records = root.findall("record")
             for record in records:
                 output_temp_record = output
@@ -356,7 +356,7 @@ class DMARCELK():
                         output_temp_record["row-count"] = int(count.text)
                     else:
                         output_temp_record["row-count"] = ""
-
+                    
                     ###record - row - policy_evaluated
                     policy_evaluated = row.find("policy_evaluated")
 
@@ -464,22 +464,23 @@ class DMARCELK():
                     output_temp_record["auth_results-dkim-domain"] = ""
                     output_temp_record["auth_results-dkim-result"] = ""
                     output_temp_record["auth_results-dkim-selector"] = ""
-
+                
                 if int_begin is not None:
                     output_temp_record["@timestamp"] = int_begin.isoformat()
                 else:
                     output_temp_record["@timestamp"] = datetime.utcnow().isoformat()
+                
                 output_rows.append(output_temp_record)
+                if ELK_MODE == "read":
+                    json_data = json.dumps(output_temp_record)
+                    print(json_data)                
+                elif ELK_MODE == "write":
+                    es.index(index='dmarc-index',doc_type='dmarc_report',body=output_temp_record)            
+                else:
+                    print("ELK_MODE is not valid is: %s" % (ELK_MODE))
+                
         else:
             print("Unkown root tag for xml: %s" % (root.tag))
-        for row in output_rows:
-            if ELK_MODE == "read":
-                json_data = json.dumps(row)
-                print(json_data)                
-            elif ELK_MODE == "write":
-                es.index(index='dmarc-index',doc_type='dmarc_report',body=row)            
-            else:
-                print("ELK_MODE is not valid is: %s" % (ELK_MODE))
 
     def __run(self):
         self.__setup_con()
