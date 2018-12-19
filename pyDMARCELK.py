@@ -10,6 +10,7 @@ import base64
 import zipfile
 import json
 import os
+import time
 import xml.etree.ElementTree as ET
 
 CONFIG = ConfigParser()
@@ -475,7 +476,8 @@ class DMARCELK():
                     json_data = json.dumps(output_temp_record)
                     print(json_data)                
                 elif ELK_MODE == "write":
-                    es.index(index='dmarc-index',doc_type='dmarc_report',body=output_temp_record)            
+                    index_name = "dmarc-index-%s" % (time.strftime("%d-%m-%Y"))
+                    es.index(index=index_name,doc_type='dmarc_report',body=output_temp_record)            
                 else:
                     print("ELK_MODE is not valid is: %s" % (ELK_MODE))
                 
