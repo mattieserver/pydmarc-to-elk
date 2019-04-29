@@ -157,11 +157,16 @@ class DMARCELK():
             else:
                 print("unkown root: %s" % (cnt_type))
 
-            result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)            
-            if result_uid[0] == "OK":
-                pass
+            if ELK_MODE == "read":
+                print("ELK_MODE is read, not copying mail")                               
+            elif ELK_MODE == "write":
+                result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)            
+                if result_uid[0] == "OK":
+                    pass
+                else:
+                    print("Could not copy mail")        
             else:
-                print("Could not copy mail")
+                print("ELK_MODE is not valid is: %s" % (ELK_MODE))
             self.__PROCESSED.append(uid_var)
             print("Done with email uid %s \n" % (uid_var))
             messages_data.remove(num)
