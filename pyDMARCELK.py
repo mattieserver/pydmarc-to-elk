@@ -62,7 +62,12 @@ class DMARCELK():
 
     def __start_cleanup(self):
         try:
-            self.__cleanup()
+            if ELK_MODE == "read":
+                print("ELK_MODE is read, not deleting mail")                               
+            elif ELK_MODE == "write":
+                    self.__cleanup()        
+            else:
+                print("ELK_MODE is not valid is: %s" % (ELK_MODE))            
             print("Done Mailbox Cleanup")
         except Exception as e:
             print(e)
