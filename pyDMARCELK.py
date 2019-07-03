@@ -179,16 +179,19 @@ class DMARCELK():
             self.__handle_clean_att(file_type, att_name, att)
         else:
             att_dip = att.get("Content-Disposition")
-            att_dip = att_dip.split(';')
-            for x in att_dip:
-                x = x.replace("\r", "")
-                x = x.replace("\n", "")
-                x = x.replace("\t", "")
-                x = x.replace(" ","")
-                if x.startswith("filename"):
-                    att_name = x.replace('"', '')
-                    att_name = att_name.replace("filename=","")
-                    self.__handle_clean_att(file_type, att_name, att)
+            if att_dip is not None:
+                att_dip = att_dip.split(';')
+                for x in att_dip:
+                    x = x.replace("\r", "")
+                    x = x.replace("\n", "")
+                    x = x.replace("\t", "")
+                    x = x.replace(" ","")
+                    if x.startswith("filename"):
+                        att_name = x.replace('"', '')
+                        att_name = att_name.replace("filename=","")
+                        self.__handle_clean_att(file_type, att_name, att)
+            else:
+                print("Failed to get filename for %s type" % (file_type))
 
     def __handle_clean_att(self, file_type, att_name_clean, att):
         att_name = att_name_clean
