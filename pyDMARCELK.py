@@ -24,7 +24,20 @@ EMAIL_PASSWORD = CONFIG.get('email', 'password')
 ELK_HOST = CONFIG.get('elk', 'host')
 ELK_PORT = CONFIG.get('elk', 'port')
 ELK_MODE = CONFIG.get('elk', 'mode')
-es=Elasticsearch([{'host': ELK_HOST ,'port': ELK_PORT}])
+ELK_AUTH = CONFIG.get('elk', 'auth')
+ELK_USER = CONFIG.get('elk', 'user')
+ELK_PASSWORD = CONFIG.get('elk', 'password')
+
+
+try:
+    if ELK_AUTH == "yes":
+        es = Elasticsearch([ELK_HOST],port=ELK_PORT,http_auth=(ELK_USER,ELK_PASSWORD))
+    else:
+        es=Elasticsearch([{'host': ELK_HOST ,'port': ELK_PORT}])
+    es.infof()
+except Exception as ex:
+    print (ex)
+
 
 class DMARCELK():
     __M = None
@@ -63,11 +76,11 @@ class DMARCELK():
     def __start_cleanup(self):
         try:
             if ELK_MODE == "read":
-                print("ELK_MODE is read, not deleting mail")                               
+                print("ELK_MODE is read, not deleting mail")
             elif ELK_MODE == "write":
-                    self.__cleanup()        
+                    self.__cleanup()
             else:
-                print("ELK_MODE is not valid is: %s" % (ELK_MODE))            
+                print("ELK_MODE is not valid is: %s" % (ELK_MODE))
             print("Done Mailbox Cleanup")
         except Exception as e:
             print(e)
@@ -107,8 +120,8 @@ class DMARCELK():
         else:
             for num in new_messages_data:
                 uid = self.__getUID(self.__M,num)
-                if uid in self.__PROCESSED:                    
-                    count += 1                            
+                if uid in self.__PROCESSED:
+                    count += 1
             return count
 
     def __getUID(self,M, num):
@@ -158,13 +171,13 @@ class DMARCELK():
                 print("unkown root: %s" % (cnt_type))
 
             if ELK_MODE == "read":
-                print("ELK_MODE is read, not copying mail")                               
+                print("ELK_MODE is read, not copying mail")
             elif ELK_MODE == "write":
-                result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)            
+                result_uid = self.__M.uid('COPY', uid_var, PROCESSED_FOLDER)
                 if result_uid[0] == "OK":
                     pass
                 else:
-                    print("Could not copy mail")        
+                    print("Could not copy mail")
             else:
                 print("ELK_MODE is not valid is: %s" % (ELK_MODE))
             self.__PROCESSED.append(uid_var)
@@ -231,7 +244,7 @@ class DMARCELK():
     def __handle_xml(self, file, name, new):
         tree = ET.ElementTree(ET.fromstring(file))
         if new:
-            path_name= "data/processed/" + name + ".xml"        
+            path_name= "data/processed/" + name + ".xml"
             tree.write(path_name)
         root = tree.getroot()
         output = {}
@@ -349,7 +362,7 @@ class DMARCELK():
             else:
                 output["policy_published-pct"] = ""
 
-            #record            
+            #record
             records = root.findall("record")
             for record in records:
                 output_temp_record = output
@@ -370,7 +383,7 @@ class DMARCELK():
                         output_temp_record["row-count"] = int(count.text)
                     else:
                         output_temp_record["row-count"] = ""
-                    
+
                     ###record - row - policy_evaluated
                     policy_evaluated = row.find("policy_evaluated")
 
@@ -478,22 +491,22 @@ class DMARCELK():
                     output_temp_record["auth_results-dkim-domain"] = ""
                     output_temp_record["auth_results-dkim-result"] = ""
                     output_temp_record["auth_results-dkim-selector"] = ""
-                
+
                 if int_begin is not None:
                     output_temp_record["@timestamp"] = int_begin.isoformat()
                 else:
                     output_temp_record["@timestamp"] = datetime.utcnow().isoformat()
-                
+
                 output_rows.append(output_temp_record)
                 if ELK_MODE == "read":
                     json_data = json.dumps(output_temp_record)
-                    print(json_data)                
+                    print(json_data)
                 elif ELK_MODE == "write":
                     index_name = "dmarc-index-%s" % (time.strftime("%d-%m-%Y"))
-                    es.index(index=index_name,doc_type='dmarc_report',body=output_temp_record)            
+                    es.index(index=index_name,doc_type='dmarc_report',body=output_temp_record)
                 else:
                     print("ELK_MODE is not valid is: %s" % (ELK_MODE))
-                
+
         else:
             print("Unkown root tag for xml: %s" % (root.tag))
 
@@ -509,4 +522,3 @@ class DMARCELK():
                 file_path = "data/processed/" + file_name
                 file_object = open(file_path,"r").read()
                 self.__handle_xml(file_object,file_name,False)
-                
