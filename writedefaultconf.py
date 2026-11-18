@@ -1,20 +1,37 @@
 from configparser import ConfigParser
 
-CONFIG = ConfigParser()
-CONFIG.read("Settings/config.ini")
-CONFIG.add_section("email")
-CONFIG.set("email", "host", "webmail.example.com")
-CONFIG.set("email", "user", "Admin")
-CONFIG.set("email", "password", "admin_password")
-CONFIG.set("email", "reports_folder", "Inbox")
-CONFIG.set("email", "processed_folder", "INBOX/Processed")
-CONFIG.add_section("elk")
-CONFIG.set("elk", "host", "192.168.0.1")
-CONFIG.set("elk", "port", "9200")
-CONFIG.set("elk", "mode", "read")  # set read or write
-CONFIG.set("elk", "auth", "no")  # set yes or no
-CONFIG.set("elk", "user", "username_elastic")
-CONFIG.set("elk", "password", "password_elastic")
+CONFIG_PATH = "Settings/config.ini"
 
-with open("Settings/config.ini", "w") as f:
+DEFAULTS = {
+    "email": {
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "client_id": "00000000-0000-0000-0000-000000000000",
+        "secret": "app_registration_client_secret",
+        "mailbox_id": "mailauth-reports@example.com",
+        "delete_processed": "no",
+    },
+    "elk": {
+        "host": "192.168.0.1",
+        "port": "9200",
+        "mode": "read",  # set read or write
+        "auth": "no",  # set yes or no
+        "user": "username_elastic",
+        "password": "password_elastic",
+        "verify_certs": "yes",  # set no only for a self-signed cluster
+    },
+}
+
+CONFIG = ConfigParser()
+CONFIG.read(CONFIG_PATH)
+
+for section, options in DEFAULTS.items():
+    if not CONFIG.has_section(section):
+        CONFIG.add_section(section)
+    for option, value in options.items():
+        if not CONFIG.has_option(section, option):
+            CONFIG.set(section, option, value)
+
+with open(CONFIG_PATH, "w") as f:
     CONFIG.write(f)
+
+print("Wrote {}, missing options filled with defaults.".format(CONFIG_PATH))
